@@ -1,0 +1,17 @@
+{
+  "manifest_version" : 2,
+
+  "name": "TodoChrome",
+  "description": "add current page to Todo/inbox directory",
+  "version": "0.1",
+  
+  "permissions": ["activeTab", "http://127.0.0.1:39095/", "notifications"],
+  "background" : {
+    "scripts" : ["background.js", "jquery-3.1.0.min.js"]
+  },
+
+  "browser_action": {
+    "default_title": "make new todo item",
+    "default_icon": "icon_19.png"
+  }
+}

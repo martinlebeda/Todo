@@ -1,0 +1,16 @@
+#! /bin/bash
+
+# set an initial value for the flag
+NDP=`xclip -o -selection clipboard`
+
+NDP=$(yad --entry --entry-text="$NDP" --entry-label='TODO: ' --width=1000 --title='New todo to inbox')
+
+test -z "$NDP" && exit 1
+
+# echo $NDP
+# echo $JIRA
+
+# MCV-41565 - Generování složenek bez částky
+# http://mcjira/browse/MCV-41565
+
+tdadd "$NDP"

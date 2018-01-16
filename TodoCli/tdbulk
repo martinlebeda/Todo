@@ -1,0 +1,9 @@
+#!/bin/bash
+
+gvim -f /tmp/todo_bulk.txt
+
+TGT=${1:-Inbox}
+
+while read line; do
+  tdadd "$line" $TGT
+done < /tmp/todo_bulk.txt && rm /tmp/todo_bulk.txt

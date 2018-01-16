@@ -1,0 +1,6 @@
+#!/bin/bash
+
+TDIR=${2:-$HOME/Todo}
+PTRN=${1:-'*'}
+
+tree -x -I "x *" -P "$PTRN" "$TDIR"

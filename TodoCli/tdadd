@@ -1,0 +1,16 @@
+#!/bin/bash
+
+TDIR="$HOME/Todo"
+
+TGT=${2:-Inbox}
+
+if [ ! -d "$TDIR/$TGT" ]; then
+  mkdir -p "$TDIR/$TGT"
+fi
+
+if  [ -e "$1" ]; then
+  echo ln -s "$1" "$TDIR/$TGT/`basename "$1"`"
+else
+  # echo touch "$TDIR/$TGT/$1.txt"
+  touch "$TDIR/$TGT/$1.txt"
+fi
