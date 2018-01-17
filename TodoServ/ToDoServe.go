@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"regexp"
 )
 
 var todoPath = ""
@@ -129,7 +130,7 @@ func getIndexList() string {
 
             <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/jquery.hotkeys@0.1.0/jquery.hotkeys.min.js"></script>
-			<script src="http://nekman.github.io/keynavigator/keynavigator-min.js"></script>
+			<!-- script src="http://nekman.github.io/keynavigator/keynavigator-min.js"></script -->
             <script src="https://intercoolerreleases-leaddynocom.netdna-ssl.com/intercooler-1.2.1.min.js"></script>
             <script defer src="https://use.fontawesome.com/releases/v5.0.3/js/all.js"></script>
 
@@ -158,6 +159,11 @@ func getIndexList() string {
                     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
                     z-index: 1;
                 }
+
+				.nolink {
+					text-decoration: none;
+					color: #d0d0d0;f
+				}
 
                 /* Links inside the dropdown */
                 .dropdown-content a {
@@ -243,10 +249,10 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
 		if file.IsDir() {
 			listId := url.PathEscape(strings.Replace(filepath.Join(dirName, file.Name()), "/", DIRSEP, -1))
 			clientId := uuid.Must(uuid.NewV4()).String()
-			body += `<li><span style="color: darkseagreen; font-size: small; font-style: italic;" 
+			body += `<li><a class="nolink"><span style="color: darkseagreen; font-size: small; font-style: italic;" 
                     ic-post-to="/add/` + listId + `" ic-target="#` + clientId + `" ic-replace-target="true"        
                     ic-prompt="New task in ` + file.Name() + `:" ic-include='{"cltgt": "` + clientId + `"}'
-                    >` + file.Name() + "</span>\n"
+                    >` + file.Name() + "</span></a>\n"
 			body += listTodoDir(filepath.Join(dirName, file.Name()), search, clear, clientId)
 			body += "</li>\n"
 		} else {
@@ -275,10 +281,9 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
 
 func renderSimpleItem(fileName string, dirName string) string {
 	style, taskId, clientId := prepareItem(fileName, dirName)
-	renderedItem := `<li id="` + clientId +
-		`" <span style="` + style + `" ic-get-from="/list/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">` +
-		fileName + `</span> ` +
-		"</li>\n"
+	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/list/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">`+
+                	    `<span style="` + style + `" >` + fileName + `</span></a> ` +
+            		"</li>\n"
 	return renderedItem
 }
 
@@ -297,9 +302,8 @@ func renderFullItem(fileName string, dirName string) string {
 		}
 	}
 
-	renderedItem := `<li id="` + clientId +
-		`" <span style="` + style + `" ic-get-from="/list/task/` + taskId + `" ic-target="#` + clientId + `" ic-replace-target="true">` +
-		fileName + `</span> ` +
+	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/list/task/` + taskId + `" ic-target="#` + clientId + `" ic-replace-target="true">
+                        <span style="` + style + `">` + fileName + `</span> ` +
 		`<div>
             <button type="button" ic-post-to="/list/task/` + taskId + `/done" ic-target="#` + clientId + `" ic-replace-target="true"><i class="fas fa-check"></i></button>
             <button type="button" ic-get-from="/list/task/` + taskId + `/edit"><i class="fas fa-pencil-alt"></i></button>
@@ -375,8 +379,7 @@ func taskDone(c *gin.Context) {
 	if strings.HasPrefix(oldName, DONEPREFIX) {
 		newName = strings.TrimPrefix(oldName, DONEPREFIX)
 	} else {
-		// TODO Lebeda - remove priority
-		newName = DONEPREFIX + oldName
+		newName = DONEPREFIX + RemoveAllPrio(oldName)
 	}
 
 	// rename file
@@ -408,8 +411,7 @@ func taskPrio(c *gin.Context, prio string) {
 	if strings.HasPrefix(oldName, donePrefix) {
 		newName = strings.TrimPrefix(oldName, donePrefix)
 	} else {
-		// TODO Lebeda - remove priority
-		newName = donePrefix + oldName
+		newName = donePrefix + RemoveAllPrio(oldName)
 	}
 
 	// rename file
@@ -420,6 +422,11 @@ func taskPrio(c *gin.Context, prio string) {
 
 	c.Writer.WriteHeader(http.StatusOK)
 	c.Writer.Write([]byte(renderSimpleItem(newName, dir)))
+}
+
+func RemoveAllPrio(name string) string {
+	r, _ := regexp.Compile("^\\(.\\) ")
+	return r.ReplaceAllString(name, "")
 }
 
 func taskEdit(c *gin.Context) {

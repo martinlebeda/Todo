@@ -12,12 +12,14 @@ dep:
 	go get github.com/satori/go.uuid
 	go get gopkg.in/russross/blackfriday.v2
 
+test:
+	go test
 # upx
 
 # README.md: README.mds
 #	mdpreproc < README.mds > README.md
 
-install: build # README.md
+install: build test # README.md
 	cp -v TodoServe ~/bin/
 
 #release: install

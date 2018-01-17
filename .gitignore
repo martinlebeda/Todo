@@ -6,3 +6,5 @@ TodoChrome.crx
 TodoChrome.pem
 TodoServ/TodoServe
 TodoServ/tst.html
+TodoServ/install.sh
+TodoServ/.idea
