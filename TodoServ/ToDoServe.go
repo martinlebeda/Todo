@@ -194,6 +194,8 @@ func getIndexList() string {
                            ic-trigger-delay="500ms" ic-target="main" placeholder="search">
             <button type="button" id="searchclear" onclick='$("#searchinput").val(""); $("#searchinput").keyup();'><i class="fas fa-arrow-left"></i></button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("(A) "); $("#searchinput").keyup();'>(A)</button>
+            <button type="button" id="search_a" onclick='$("#searchinput").val("~^\([AB]\) "); $("#searchinput").keyup();'>(B)</button>
+            <button type="button" id="search_a" onclick='$("#searchinput").val("~^\([ABC]\) "); $("#searchinput").keyup();'>(C)</button>
             <button type="button" id="clearrepo" ic-post-to="/clear" ic-target="main"><i class="fas fa-trash-alt"></i></button>
         </header>
         <main style="flex-grow: 999; overflow-y: scroll;">
@@ -268,9 +270,8 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
             }
 
             // remove by filter
-            normSearch := NormalizeString(search)
-            normName := NormalizeString(file.Name())
-            if normSearch != "" && !strings.Contains(normName, normSearch) {
+            itemOk := CheckFilterItem(search, file.Name())
+            if !itemOk {
                 continue
             }
 
@@ -282,6 +283,32 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
     body += "</ul>\n"
 
     return body
+}
+
+func CheckFilterItem(search string, fileName string) bool {
+    itemOk := true
+    trimSpace := strings.TrimSpace(search)
+    if len(trimSpace) > 0 {
+        if strings.HasPrefix(search, "~") {
+            // regex
+            search = strings.TrimPrefix(search, "~")
+            pattern := strings.Replace(search, "(", "\\(", -1)
+            pattern = strings.Replace(pattern, ")", "\\)", -1)
+            pattern = "(?i)" + pattern
+            matched, _ := regexp.MatchString(pattern, fileName)
+            if !matched {
+                itemOk = false
+            }
+        } else {
+            // simple search
+            normSearch := NormalizeString(search)
+            normName := NormalizeString(fileName)
+            if normSearch != "" && !strings.Contains(normName, normSearch) {
+                itemOk = false
+            }
+        }
+    }
+    return itemOk
 }
 
 func renderList(dirList string, search string, clear bool) string {
