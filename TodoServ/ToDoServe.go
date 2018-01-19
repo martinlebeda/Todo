@@ -20,6 +20,7 @@ import (
 )
 
 var todoPath = ""
+var editCommand = ""
 
 const DIRSEP = "~"
 const DONEPREFIX = "x "
@@ -30,6 +31,8 @@ func main() {
 	// path to inbox with default value
 	inboxDefault := filepath.Join(os.Getenv("HOME"), "Todo")
 	flag.StringVar(&todoPath, "path", inboxDefault, "path for executable scripts")
+	editorDefault := os.Getenv("EDITOR")
+	flag.StringVar(&editCommand, "editor", editorDefault, "editor for underlaying files")
 	flag.Parse()
 
 	// check existence path
@@ -37,23 +40,31 @@ func main() {
 
 	// set router
 	router := gin.Default()
+	// service
 	router.GET("/quit", quitServer)
+
+	// API for external app
 	router.POST("/insert", insertTodo) // for call from external (ie. browser extension)
 
-	router.GET("/list", listTodo)
+	// special
+	router.GET("/index", listTodo)
 	router.POST("/search", search)
 	router.POST("/clear", clear)
-	router.POST("/add/:path", addTask)
-
-	router.GET("/list/task/:task", taskSimpleRender)
-	router.GET("/list/task/:task/full", taskFullRender)
-	router.POST("/list/task/:task/done", taskDone)
-	router.POST("/list/task/:task/prioa", prioa)
-	router.POST("/list/task/:task/priob", priob)
-	router.POST("/list/task/:task/prioc", prioc)
-	router.GET("/list/task/:task/edit", taskEdit)
 	router.POST("/move/:task/:dir", moveTask)
-	router.DELETE("/list/task/:task/delete", taskDelete)
+
+	// manage lists
+	router.GET("/list/:path", listRender)
+	router.POST("/list/:path/add", addTask)
+
+	// manage tasks
+	router.GET("/task/:task", taskSimpleRender)
+	router.GET("/task/:task/full", taskFullRender)
+	router.POST("/task/:task/done", taskDone)
+	router.POST("/task/:task/prioa", prioa)
+	router.POST("/task/:task/priob", priob)
+	router.POST("/task/:task/prioc", prioc)
+	router.GET("/task/:task/edit", taskEdit)
+	router.DELETE("/task/:task/delete", taskDelete)
 
 	// set listen port
 	portNumberStr := strconv.Itoa(*numbPtr)
@@ -71,12 +82,12 @@ func quitServer(c *gin.Context) {
 
 func insertTodo(c *gin.Context) {
 	title := c.PostForm("title")
-	url := c.PostForm("url")
+	todoUrl := c.PostForm("url")
 
-	fmt.Println("data: " + title + " -> " + url)
+	fmt.Println("data: " + title + " -> " + todoUrl)
 
 	title = normalizeFileName(title)
-	err := ioutil.WriteFile(filepath.Join(todoPath, "Inbox", title+".txt"), []byte(url), 0644)
+	err := ioutil.WriteFile(filepath.Join(todoPath, "Inbox", title+".txt"), []byte(todoUrl), 0644)
 	if err != nil {
 		log.Println("Unable write file '" + title + ".txt'")
 	}
@@ -246,42 +257,54 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
 			continue
 		}
 
-		if file.IsDir() {
-			listId := url.PathEscape(strings.Replace(filepath.Join(dirName, file.Name()), "/", DIRSEP, -1))
-			clientId := uuid.Must(uuid.NewV4()).String()
-			body += `<li><a class="nolink"><span style="color: darkseagreen; font-size: small; font-style: italic;" 
-                    ic-post-to="/add/` + listId + `" ic-target="#` + clientId + `" ic-replace-target="true"        
-                    ic-prompt="New task in ` + file.Name() + `:" ic-include='{"cltgt": "` + clientId + `"}'
-                    >` + file.Name() + "</span></a>\n"
-			body += listTodoDir(filepath.Join(dirName, file.Name()), search, clear, clientId)
-			body += "</li>\n"
-		} else {
-			// clear
-			if clear && strings.HasPrefix(file.Name(), DONEPREFIX) {
-				os.Remove(filepath.Join(dirName, file.Name()))
-				continue
-			}
+        dirList := filepath.Join(dirName, file.Name())
+        if file.IsDir() {
+            body += renderList(dirList, search, clear)
+        } else {
+            // clear
+            if clear && strings.HasPrefix(file.Name(), DONEPREFIX) {
+                os.Remove(dirList)
+                continue
+            }
 
-			// remove by filter
-			normSearch := strings.ToLower(strings.TrimSpace(search))    // TODO Lebeda - remove dicritics
-			normName := strings.ToLower(strings.TrimSpace(file.Name())) // TODO Lebeda - remove dicritics
-			if normSearch != "" && !strings.Contains(normName, normSearch) {
-				continue
-			}
+            // remove by filter
+            normSearch := NormalizeString(search)
+            normName := NormalizeString(file.Name())
+            if normSearch != "" && !strings.Contains(normName, normSearch) {
+                continue
+            }
 
-			// render item
-			body += renderSimpleItem(file.Name(), dirName)
-		}
-	}
+            // render item
+            body += renderSimpleItem(file.Name(), dirName)
+        }
+    }
 
-	body += "</ul>\n"
+    body += "</ul>\n"
 
-	return body
+    return body
+}
+
+func renderList(dirList string, search string, clear bool) string {
+    base := filepath.Base(dirList)
+    listId := encodeListId(dirList)
+    clientId := uuid.Must(uuid.NewV4()).String()
+    body := `<li ic-src="/list/` + listId + `" ic-replace-target="true"><a class="nolink"><span style="color: darkseagreen; font-size: small; font-style: italic;" 
+						                    ic-post-to="/list/` + listId + `/add"        
+						                    ic-prompt="New task in ` + base + `:" ic-include='{"cltgt": "` + clientId + `"}'
+						                    >` + base + "</span></a>\n"
+    //ic-src="/list/` + listId + `"
+    body += listTodoDir(dirList, search, clear, clientId)
+    body += "</li>\n"
+    return body
+}
+
+func encodeListId(dirList string) string {
+    return url.PathEscape(strings.Replace(dirList, "/", DIRSEP, -1))
 }
 
 func renderSimpleItem(fileName string, dirName string) string {
 	style, taskId, clientId := prepareItem(fileName, dirName)
-	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/list/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">`+
+	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">`+
                 	    `<span style="` + style + `" >` + fileName + `</span></a> ` +
             		"</li>\n"
 	return renderedItem
@@ -302,16 +325,16 @@ func renderFullItem(fileName string, dirName string) string {
 		}
 	}
 
-	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/list/task/` + taskId + `" ic-target="#` + clientId + `" ic-replace-target="true">
+	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `" ic-target="#` + clientId + `" ic-replace-target="true">
                         <span style="` + style + `">` + fileName + `</span> ` +
 		`<div>
-            <button type="button" ic-post-to="/list/task/` + taskId + `/done" ic-target="#` + clientId + `" ic-replace-target="true"><i class="fas fa-check"></i></button>
-            <button type="button" ic-get-from="/list/task/` + taskId + `/edit"><i class="fas fa-pencil-alt"></i></button>
-            <button type="button" ic-post-to="/list/task/` + taskId + `/rename"><i class="far fa-edit"></i></button>
-            <button type="button" ic-post-to="/list/task/` + taskId + `/prioa" ic-target="#` + clientId + `" ic-replace-target="true">(A)</button>
-            <button type="button" ic-post-to="/list/task/` + taskId + `/priob" ic-target="#` + clientId + `" ic-replace-target="true">(B)</button>
-            <button type="button" ic-post-to="/list/task/` + taskId + `/prioc" ic-target="#` + clientId + `" ic-replace-target="true">(C)</button>
-            <button type="button" ic-delete-from="/list/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i></a>
+            <button type="button" ic-post-to="/task/` + taskId + `/done" ic-target="#` + clientId + `" ic-replace-target="true"><i class="fas fa-check"></i></button>
+            <button type="button" ic-get-from="/task/` + taskId + `/edit"><i class="fas fa-pencil-alt"></i></button>
+            <button type="button" ic-post-to="/task/` + taskId + `/rename"><i class="far fa-edit"></i></button>
+            <button type="button" ic-post-to="/task/` + taskId + `/prioa" ic-target="#` + clientId + `" ic-replace-target="true">(A)</button>
+            <button type="button" ic-post-to="/task/` + taskId + `/priob" ic-target="#` + clientId + `" ic-replace-target="true">(B)</button>
+            <button type="button" ic-post-to="/task/` + taskId + `/prioc" ic-target="#` + clientId + `" ic-replace-target="true">(C)</button>
+            <button type="button" ic-delete-from="/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i></a>
            </div>` + content +
 		getMoveDirs(taskId) +
 		"</li>\n"
@@ -432,7 +455,7 @@ func RemoveAllPrio(name string) string {
 func taskEdit(c *gin.Context) {
 	dir, name := getTaskFromUrlPath(c)
 
-	cmd := exec.Command("exo-open", filepath.Join(dir, name)) // TODO Lebeda - open cmd as param
+	cmd := exec.Command(editCommand, filepath.Join(dir, name))
 	err := cmd.Start()
 	if err != nil {
 		log.Fatal(err)
@@ -454,6 +477,7 @@ func moveTask(c *gin.Context) {
 
 	// do rename
 	errRename := os.Rename(filepath.Join(dir, name), filepath.Join(tgtDir, name))
+    c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(tgtDir))
 	if errRename != nil {
 		log.Fatal(errRename)
 	}
@@ -463,24 +487,59 @@ func moveTask(c *gin.Context) {
 	c.Writer.Write([]byte(listTodoDir(todoPath, "", true, "")))
 }
 
-func addTask(c *gin.Context) {
+func listRender(c *gin.Context) {
+	path, err := decodePath(c)
+
+    if err != nil {
+        log.Println("Unable render list")
+        return
+    }
+
+	//cltgt := c.PostForm("cltgt")
+
+	// make refresh index
+	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.Write([]byte(renderList(path, "", false)))
+}
+
+func decodePath(c *gin.Context) (string, error) {
 	path, err := url.PathUnescape(c.Param("path"))
 	if err != nil {
 		log.Println("Unable add task")
 	}
 	path = strings.Replace(path, DIRSEP, "/", -1)
+	return path, err
+}
 
-	cltgt := c.PostForm("cltgt")
+func addTask(c *gin.Context) {
+	path, err := decodePath(c)
+
+	//cltgt := c.PostForm("cltgt")
 	name := c.PostForm("ic-prompt-value")
 
-	_, err = os.Create(filepath.Join(path, normalizeFileName(name)+".txt"))
-	if err != nil {
-		log.Fatal(err)
-	}
+	if name == "-" {
+	    listDeleteIfEmpty(filepath.Join(path))
+        parentDir := filepath.Dir(path)
+        c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(parentDir))
+    } else if strings.HasPrefix(name, "/") {
+	    // create directory
+	    name = strings.TrimSpace(name)
+        err = os.Mkdir(filepath.Join(path, normalizeFileName(name)), os.ModePerm)
+        if err != nil {
+            log.Fatal(err)
+        }
+    } else {
+        // create file
+        _, err = os.Create(filepath.Join(path, normalizeFileName(name)+".txt"))
+        if err != nil {
+            log.Fatal(err)
+        }
+    }
 
 	// make refresh index
+	
 	c.Writer.WriteHeader(http.StatusOK)
-	c.Writer.Write([]byte(listTodoDir(path, "", false, cltgt)))
+	//c.Writer.Write([]byte(listTodoDir(path, "", false, cltgt)))
 }
 
 func taskDelete(c *gin.Context) {
@@ -491,8 +550,25 @@ func taskDelete(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	listDeleteIfEmpty(filepath.Join(dir))
+
+    parentDir := filepath.Dir(dir)
+    c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(parentDir))
 	c.Writer.WriteHeader(http.StatusOK)
 	c.Writer.Header().Add("X-IC-Remove", "true")
+}
+
+func listDeleteIfEmpty(dir string) {
+    isEmpty, err := IsEmpty(dir)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if isEmpty {
+        err = os.Remove(dir)
+        if err != nil {
+            log.Fatal(err)
+        }
+    }
 }
 
 // Returns the names of the subdirectories (including their paths)

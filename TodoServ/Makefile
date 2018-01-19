@@ -11,6 +11,8 @@ dep:
 	go get github.com/gin-gonic/gin
 	go get github.com/satori/go.uuid
 	go get gopkg.in/russross/blackfriday.v2
+	go get golang.org/x/text/unicode/norm
+	go get golang.org/x/text/transform
 
 test:
 	go test
