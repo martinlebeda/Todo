@@ -255,7 +255,9 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
 	}
 	for _, file := range files {
 		// remove invisible files and dirs
-		if strings.HasPrefix(file.Name(), ".") {
+		if strings.HasPrefix(file.Name(), ".") ||
+			( file.IsDir() && (file.Name() == "Templates")) ||
+			( file.IsDir() && (file.Name() == "Maybe")) { // TODO Lebeda - povolit zobrazení maybe v session
 			continue
 		}
 
