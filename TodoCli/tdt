@@ -3,4 +3,4 @@
 TDIR=${2:-$HOME/Todo}
 PTRN=${1:-'*'}
 
-tree -x -I "x *" -P "$PTRN" "$TDIR"
+tree -x -I "x *|Templates|Maybe" -P "$PTRN" "$TDIR"
