@@ -266,7 +266,10 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
 
         dirList := filepath.Join(dirName, file.Name())
         if file.IsDir() {
-            body += renderList(dirList, search, clear)
+            // if directory is ok for search -> all item is ok too
+            subsearch := search
+            if CheckFilterItem(search, file.Name()) { subsearch = "" }
+            body += renderList(dirList, subsearch, clear)
         } else {
             // clear
             if clear && strings.HasPrefix(file.Name(), DONEPREFIX) {
