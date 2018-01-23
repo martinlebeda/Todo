@@ -19,6 +19,9 @@ import (
 	"regexp"
 )
 
+const DIR_MAYBE = "Maybe"
+const DIR_TEMPLATES = "Templates"
+
 var todoPath = ""
 var editCommand = ""
 
@@ -255,9 +258,9 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
 	}
 	for _, file := range files {
 		// remove invisible files and dirs
-		if strings.HasPrefix(file.Name(), ".") ||
-			( file.IsDir() && (file.Name() == "Templates")) ||
-			( file.IsDir() && (file.Name() == "Maybe")) { // TODO Lebeda - povolit zobrazení maybe v session
+        if strings.HasPrefix(file.Name(), ".") ||
+			( file.IsDir() && (file.Name() == DIR_TEMPLATES)) ||
+			( file.IsDir() && (file.Name() == DIR_MAYBE)) {
 			continue
 		}
 
@@ -314,17 +317,29 @@ func CheckFilterItem(search string, fileName string) bool {
 }
 
 func renderList(dirList string, search string, clear bool) string {
-    base := filepath.Base(dirList)
-    listId := encodeListId(dirList)
-    clientId := uuid.Must(uuid.NewV4()).String()
-    body := `<li ic-src="/list/` + listId + `" ic-replace-target="true"><a class="nolink"><span style="color: darkseagreen; font-size: small; font-style: italic;" 
+	base, style, listId, clientId := prepareList(dirList)
+	body := `<li ic-src="/list/` + listId + `" ic-replace-target="true"><a class="nolink"><span style="` + style + `" 
 						                    ic-post-to="/list/` + listId + `/add"        
 						                    ic-prompt="New task in ` + base + `:" ic-include='{"cltgt": "` + clientId + `"}'
 						                    >` + base + "</span></a>\n"
-    //ic-src="/list/` + listId + `"
     body += listTodoDir(dirList, search, clear, clientId)
     body += "</li>\n"
     return body
+}
+
+func prepareList(dirList string) (string, string, string, string) {
+	base := filepath.Base(dirList)
+	style := "color: darkseagreen;"
+	// set style for item
+	if strings.HasPrefix(base, "(A) ") {
+		style += "font-weight: bold;"
+	} else {
+    	style += "font-size: small;"
+	    style += "font-style: italic;"
+    }
+    listId := encodeListId(dirList)
+    clientId := uuid.Must(uuid.NewV4()).String()
+	return base, style, listId, clientId
 }
 
 func encodeListId(dirList string) string {
@@ -354,6 +369,9 @@ func renderFullItem(fileName string, dirName string) string {
 		}
 	}
 
+	maybeDirname := strings.Replace(dirName, todoPath, DIR_MAYBE, -1)
+    maybeIdPath := 	url.PathEscape(strings.Replace(maybeDirname, "/", DIRSEP, -1))
+
 	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `" ic-target="#` + clientId + `" ic-replace-target="true">
                         <span style="` + style + `">` + fileName + `</span> ` +
 		`<div>
@@ -363,6 +381,7 @@ func renderFullItem(fileName string, dirName string) string {
             <button type="button" ic-post-to="/task/` + taskId + `/prioa" ic-target="#` + clientId + `" ic-replace-target="true">(A)</button>
             <button type="button" ic-post-to="/task/` + taskId + `/priob" ic-target="#` + clientId + `" ic-replace-target="true">(B)</button>
             <button type="button" ic-post-to="/task/` + taskId + `/prioc" ic-target="#` + clientId + `" ic-replace-target="true">(C)</button>
+            <button type="button" ic-post-to="/move/` + taskId + `/` + maybeIdPath + `" ic-target="main"><i class="fas fa-archive"></i></button>
             <button type="button" ic-delete-from="/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i></a>
            </div>` + content +
 		getMoveDirs(taskId) +
@@ -391,7 +410,7 @@ func getMoveDirs(taskId string) string {
 		if strings.TrimSpace(element) == "" {
 			continue
 		}
-		pathEscape := url.PathEscape(strings.Replace(element, "/", DIRSEP, -1))
+		pathEscape :=  encodeListId(element)
 		result += `<button type="button" ic-post-to="/move/` + taskId + `/` + pathEscape + `" ic-target="main">` + element[1:] + `</button>`
 		// element is the element from someSlice for where we are
 	}
@@ -500,9 +519,17 @@ func moveTask(c *gin.Context) {
 	tgtDir, err := url.PathUnescape(c.Param("dir"))
 	if err != nil {
 		log.Println("Unable render task '" + tgtDir)
+        return
 	}
 	tgtDir = strings.Replace(tgtDir, DIRSEP, "/", -1)
 	tgtDir = filepath.Join(todoPath, tgtDir)
+
+	// create dir if not exists
+    err = os.MkdirAll(tgtDir, os.ModePerm)
+    if err != nil {
+        log.Println("Unable create target directory: " + tgtDir)
+        return
+    }
 
 	// do rename
 	errRename := os.Rename(filepath.Join(dir, name), filepath.Join(tgtDir, name))
