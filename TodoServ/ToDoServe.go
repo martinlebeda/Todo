@@ -416,7 +416,7 @@ func getMoveDirs(taskId string) string {
 			continue
 		}
 		pathEscape :=  encodeListId(element)
-		result += `<button type="button" ic-post-to="/move/` + taskId + `/` + pathEscape + `" ic-target="main">` + element[1:] + `</button>`
+		result += `<button type="button" class="small" ic-post-to="/move/` + taskId + `/` + pathEscape + `" ic-target="main">` + element[1:] + `</button>`
 		// element is the element from someSlice for where we are
 	}
 	return result
