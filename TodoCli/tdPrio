@@ -1,0 +1,16 @@
+#!/bin/bash
+
+PRIO=$1
+shift
+
+for i in "$@"; do
+  RDNAME="`echo \"$i\" | sed -e 's/^([ABCDE]) //'`"
+
+  if [ "$i" != "$RDNAME" ]; then
+    mv "$i" "$RDNAME"
+  fi
+  
+  if [ $PRIO != "_" ]; then
+    mv -v "$RDNAME" "($PRIO) $RDNAME"
+  fi
+done

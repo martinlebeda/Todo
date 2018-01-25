@@ -1,0 +1,16 @@
+#!/bin/bash
+
+for i in "$@"; do
+  PRIONAME="`echo \"$i\" | sed -e 's/^([ABCDE]) //'`"
+  if [ "$i" != "$PRIONAME" ]; then
+    mv -v "$i" "$PRIONAME"
+  fi
+
+  RDNAME="`echo \"$PRIONAME\" | sed -e 's/^x //'`"
+
+  if [ "$PRIONAME" != "$RDNAME" ]; then
+    mv -v "$PRIONAME" "$RDNAME"
+  else
+    mv -v "$RDNAME" "x $RDNAME"
+  fi
+done
