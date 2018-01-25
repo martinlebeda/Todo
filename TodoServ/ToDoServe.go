@@ -258,9 +258,7 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
 	}
 	for _, file := range files {
 		// remove invisible files and dirs
-        if strings.HasPrefix(file.Name(), ".") ||
-			( file.IsDir() && (file.Name() == DIR_TEMPLATES)) ||
-			( file.IsDir() && (file.Name() == DIR_MAYBE)) {
+        if strings.HasPrefix(file.Name(), ".") || IsIgnoreDir(file) {
 			continue
 		}
 
@@ -291,6 +289,10 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
     body += "</ul>\n"
 
     return body
+}
+
+func IsIgnoreDir(file os.FileInfo) bool {
+    return (file.IsDir() && (file.Name() == DIR_TEMPLATES)) || (file.IsDir() && (file.Name() == DIR_MAYBE))
 }
 
 func CheckFilterItem(search string, fileName string) bool {
@@ -410,7 +412,7 @@ func getMoveDirs(taskId string) string {
 	result := ""
 	for _, element := range GetDirectories() {
 		element = strings.TrimPrefix(element, todoPath)
-		if strings.TrimSpace(element) == "" {
+        if (strings.TrimSpace(element) == "") || strings.HasPrefix(element, "/"+DIR_MAYBE) || strings.HasPrefix(element, "/"+DIR_TEMPLATES) {
 			continue
 		}
 		pathEscape :=  encodeListId(element)
