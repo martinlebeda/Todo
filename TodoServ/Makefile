@@ -13,6 +13,7 @@ dep:
 	go get gopkg.in/russross/blackfriday.v2
 	go get golang.org/x/text/unicode/norm
 	go get golang.org/x/text/transform
+	go get github.com/gin-contrib/sessions
 
 test:
 	go test

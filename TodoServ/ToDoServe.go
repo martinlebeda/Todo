@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/satori/go.uuid"
 	"gopkg.in/russross/blackfriday.v2"
+    "github.com/gin-contrib/sessions"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -43,6 +44,11 @@ func main() {
 
 	// set router
 	router := gin.Default()
+
+	// client side store
+    store := sessions.NewCookieStore([]byte("wcvwrqwvbdtyjerh"))
+    router.Use(sessions.Sessions("TodoServe", store))
+
 	// service
 	router.GET("/quit", quitServer)
 
@@ -113,7 +119,7 @@ func normalizeFileName(title string) string {
 }
 
 func listTodo(c *gin.Context) {
-	body := getIndexList()
+	body := getIndexList(c)
 
 	c.Writer.WriteHeader(http.StatusOK)
 	c.Writer.Write([]byte(body))
@@ -121,19 +127,23 @@ func listTodo(c *gin.Context) {
 
 func search(c *gin.Context) {
 	search := c.PostForm("search")
-	fmt.Println(search)
 
-	// TODO Lebeda - store param to session
+	// store param to session
+    session := sessions.Default(c)
+	session.Set("search", search)
+	session.Save()
+
+	// send reply
 	c.Writer.WriteHeader(http.StatusOK)
-	c.Writer.Write([]byte(listTodoDir(todoPath, search, false, "")))
+	c.Writer.Write([]byte(listTodoDir(c, todoPath, search, false, "")))
 }
 
 func clear(c *gin.Context) {
 	c.Writer.WriteHeader(http.StatusOK)
-	c.Writer.Write([]byte(listTodoDir(todoPath, "", true, "")))
+	c.Writer.Write([]byte(listTodoDir(c, todoPath, "", true, "")))
 }
 
-func getIndexList() string {
+func getIndexList(c *gin.Context) string {
 	body := `<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -194,7 +204,7 @@ func getIndexList() string {
         <body style="height: 100vh; display: flex; flex-direction: column;">
         <header style="flex-grow: 1; min-height: 44px; display: flex;">
             <input id="searchinput" type="text" style=" padding: 5px; flex-grow: 999;" name="search" ic-post-to="/search" ic-trigger-on="keyup changed"
-                           ic-trigger-delay="500ms" ic-target="main" placeholder="search">
+                           ic-trigger-delay="500ms" ic-target="main" placeholder="search" value="`+ getSessionSearch("", c) +`">
             <button type="button" id="searchclear" onclick='$("#searchinput").val(""); $("#searchinput").keyup();'><i class="fas fa-arrow-left"></i></button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("(A) "); $("#searchinput").keyup();'>(A)</button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("~^\([AB]\) "); $("#searchinput").keyup();'>(B)</button>
@@ -203,7 +213,7 @@ func getIndexList() string {
         </header>
         <main style="flex-grow: 999; overflow-y: scroll;">
 `
-	body += listTodoDir(todoPath, "", false, "")
+	body += listTodoDir(c, todoPath, "", false, "")
 	body += `</main>
         </body>
 		<script>
@@ -249,25 +259,30 @@ func getIndexList() string {
                     "Alt+f1","Alt+f2","Alt+f3","Alt+f4","Alt+f5","Alt+f6","Alt+f7","Alt+f8","Alt+f9","Alt+f10","Alt+f11","Alt+f12"
 */
 
-func listTodoDir(dirName string, search string, clear bool, clientListId string) string {
+func listTodoDir(c *gin.Context, dirName string, search string, clear bool, clientListId string) string {
 	body := `<ul id="` + clientListId + `">`
 
-	files, err := ioutil.ReadDir(dirName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, file := range files {
-		// remove invisible files and dirs
+    search = getSessionSearch(search, c)
+
+    // walk directories
+    files, err := ioutil.ReadDir(dirName)
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, file := range files {
+        // remove invisible files and dirs
         if strings.HasPrefix(file.Name(), ".") || IsIgnoreDir(file) {
-			continue
-		}
+            continue
+        }
 
         dirList := filepath.Join(dirName, file.Name())
         if file.IsDir() {
             // if directory is ok for search -> all item is ok too
             subsearch := search
-            if CheckFilterItem(search, file.Name()) { subsearch = "" }
-            body += renderList(dirList, subsearch, clear)
+            if CheckFilterItem(search, file.Name()) {
+                subsearch = ""
+            }
+            body += renderList(c, dirList, subsearch, clear)
         } else {
             // clear
             if clear && strings.HasPrefix(file.Name(), DONEPREFIX) {
@@ -289,6 +304,18 @@ func listTodoDir(dirName string, search string, clear bool, clientListId string)
     body += "</ul>\n"
 
     return body
+}
+
+// load search from session
+func getSessionSearch(search string, c *gin.Context) string {
+    if search == "" && c != nil {
+        session := sessions.Default(c)
+        s := session.Get("search")
+        if s != nil {
+            search = s.(string)
+        }
+    }
+    return search
 }
 
 func IsIgnoreDir(file os.FileInfo) bool {
@@ -321,13 +348,13 @@ func CheckFilterItem(search string, fileName string) bool {
     return itemOk
 }
 
-func renderList(dirList string, search string, clear bool) string {
+func renderList(c *gin.Context, dirList string, search string, clear bool) string {
 	base, style, listId, clientId := prepareList(dirList)
 	body := `<li ic-src="/list/` + listId + `" ic-replace-target="true"><a class="nolink"><span style="` + style + `" 
 						                    ic-post-to="/list/` + listId + `/add"        
 						                    ic-prompt="New task in ` + base + `:" ic-include='{"cltgt": "` + clientId + `"}'
 						                    >` + base + "</span></a>\n"
-    body += listTodoDir(dirList, search, clear, clientId)
+    body += listTodoDir(c, dirList, search, clear, clientId)
     body += "</li>\n"
     return body
 }
@@ -538,14 +565,15 @@ func moveTask(c *gin.Context) {
 
 	// do rename
 	errRename := os.Rename(filepath.Join(dir, name), filepath.Join(tgtDir, name))
-    c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(tgtDir))
+    c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(tgtDir) + "," + "/list/" + encodeListId(dir))
 	if errRename != nil {
 		log.Fatal(errRename)
 	}
 
 	// make refresh index
 	c.Writer.WriteHeader(http.StatusOK)
-	c.Writer.Write([]byte(listTodoDir(todoPath, "", true, "")))
+	//c.Writer.Header().Add("X-IC-Remove", "true")
+	//c.Writer.Write([]byte(listTodoDir(todoPath, "", false, "")))
 }
 
 func listRender(c *gin.Context) {
@@ -560,7 +588,7 @@ func listRender(c *gin.Context) {
 
 	// make refresh index
 	c.Writer.WriteHeader(http.StatusOK)
-	c.Writer.Write([]byte(renderList(path, "", false)))
+	c.Writer.Write([]byte(renderList(c, path, "", false)))
 }
 
 func decodePath(c *gin.Context) (string, error) {
