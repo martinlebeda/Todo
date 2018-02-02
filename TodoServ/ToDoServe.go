@@ -82,9 +82,7 @@ func main() {
 	router.GET("/task/:task", taskSimpleRender)
 	router.GET("/task/:task/full", taskFullRender)
 	router.POST("/task/:task/done", taskDone)
-	router.POST("/task/:task/prioa", prioa) // TODO Lebeda - sjednotit do jedné metody prio/:prio
-	router.POST("/task/:task/priob", priob)
-	router.POST("/task/:task/prioc", prioc)
+	router.POST("/task/:task/prio/:prio", taskPrio)
 	router.POST("/task/:task/context/:context", taskContext)
 	router.GET("/task/:task/edit", taskEdit)
 	router.DELETE("/task/:task/delete", taskDelete)
@@ -465,9 +463,9 @@ func renderFullItem(fileName string, dirName string) string {
             <button type="button" ic-post-to="/task/` + taskId + `/done" ic-target="#` + clientId + `" ic-replace-target="true"><i class="fas fa-check"></i></button>
             <button type="button" ic-get-from="/task/` + taskId + `/edit"><i class="fas fa-pencil-alt"></i></button>
             <button type="button" ic-post-to="/task/` + taskId + `/rename"><i class="far fa-edit"></i></button>
-            <button type="button" ic-post-to="/task/` + taskId + `/prioa" ic-target="#` + clientId + `" ic-replace-target="true">(A)</button>
-            <button type="button" ic-post-to="/task/` + taskId + `/priob" ic-target="#` + clientId + `" ic-replace-target="true">(B)</button>
-            <button type="button" ic-post-to="/task/` + taskId + `/prioc" ic-target="#` + clientId + `" ic-replace-target="true">(C)</button>
+            <button type="button" ic-post-to="/task/` + taskId + `/prio/A" ic-target="#` + clientId + `" ic-replace-target="true">(A)</button>
+            <button type="button" ic-post-to="/task/` + taskId + `/prio/B" ic-target="#` + clientId + `" ic-replace-target="true">(B)</button>
+            <button type="button" ic-post-to="/task/` + taskId + `/prio/C" ic-target="#` + clientId + `" ic-replace-target="true">(C)</button>
             <button type="button" ic-post-to="/move/` + taskId + `/` + maybeIdPath + `" ic-target="main"><i class="fas fa-archive"></i></button>
             <button type="button" ic-delete-from="/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i></a>
            </div>` + content +
@@ -567,18 +565,10 @@ func taskDone(c *gin.Context) {
 	c.Writer.Write([]byte(renderSimpleItem(newName, dir)))
 }
 
-func prioa(c *gin.Context) {
-	taskPrio(c, "A")
-}
-func priob(c *gin.Context) {
-	taskPrio(c, "B")
-}
-func prioc(c *gin.Context) {
-	taskPrio(c, "C")
-}
-
-func taskPrio(c *gin.Context, prio string) {
+func taskPrio(c *gin.Context) {
 	dir, oldName := getTaskFromUrlPath(c)
+
+	prio := c.Param("prio")
 
 	// make new task name
 	var newName string
