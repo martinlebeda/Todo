@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 	"regexp"
+	"bufio"
 )
 
 const DIR_MAYBE = "Maybe"
@@ -25,6 +26,7 @@ const DIR_TEMPLATES = "Templates"
 
 var todoPath = ""
 var editCommand = ""
+var contexts []string
 
 const DIRSEP = "~"
 const DONEPREFIX = "x "
@@ -51,6 +53,17 @@ func main() {
 
 	// service
 	router.GET("/quit", quitServer)
+	//router.StaticFile("/favicon.ico", "resources/favicon.ico")
+	router.GET("/favicon.ico", func(c *gin.Context) {
+			data, err := Asset("resources/favicon.ico")
+            if err != nil {
+                log.Print("resources/favicon.ico not found")
+            }
+
+			c.Writer.WriteHeader(http.StatusOK)
+			c.Writer.Write(data)
+		})
+
 
 	// API for external app
 	router.POST("/insert", insertTodo) // for call from external (ie. browser extension)
@@ -69,9 +82,10 @@ func main() {
 	router.GET("/task/:task", taskSimpleRender)
 	router.GET("/task/:task/full", taskFullRender)
 	router.POST("/task/:task/done", taskDone)
-	router.POST("/task/:task/prioa", prioa)
+	router.POST("/task/:task/prioa", prioa) // TODO Lebeda - sjednotit do jedné metody prio/:prio
 	router.POST("/task/:task/priob", priob)
 	router.POST("/task/:task/prioc", prioc)
+	router.POST("/task/:task/context/:context", taskContext)
 	router.GET("/task/:task/edit", taskEdit)
 	router.DELETE("/task/:task/delete", taskDelete)
 
@@ -143,13 +157,37 @@ func clear(c *gin.Context) {
 	c.Writer.Write([]byte(listTodoDir(c, todoPath, "", true, "")))
 }
 
+func loadContexts() []string {
+      f, err := os.Open(filepath.Join(todoPath, "contexts.txt"))
+      if err != nil {
+		  log.Println("Unable to load contexts.txt")
+      }
+      defer f.Close()
+
+      var lines []string
+      scanner := bufio.NewScanner(f)
+      for scanner.Scan() {
+              lines = append(lines, scanner.Text())
+      }
+      if err := scanner.Err(); err != nil {
+              fmt.Fprintln(os.Stderr, err)
+      }
+
+      return lines
+}
+
 func getIndexList(c *gin.Context) string {
+	contexts = loadContexts()
+
+	// base of app
 	body := `<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <meta name="intercoolerjs:use-actual-http-method" content="true"/>
+			<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+			<link rel="icon" href="/favicon.ico" type="image/x-icon">
             <title>Todo</title>
 
             <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
@@ -204,7 +242,7 @@ func getIndexList(c *gin.Context) string {
         <body style="height: 100vh; display: flex; flex-direction: column;">
         <header style="flex-grow: 1; min-height: 44px; display: flex;">
             <input id="searchinput" type="text" style=" padding: 5px; flex-grow: 999;" name="search" ic-post-to="/search" ic-trigger-on="keyup changed"
-                           ic-trigger-delay="500ms" ic-target="main" placeholder="search" value="`+ getSessionSearch("", c) +`">
+                           ic-trigger-delay="500ms" ic-target="main" placeholder="search (~regex) (+maybe)" value="`+ getSessionSearch("", c) +`">
             <button type="button" id="searchclear" onclick='$("#searchinput").val(""); $("#searchinput").keyup();'><i class="fas fa-arrow-left"></i></button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("(A) "); $("#searchinput").keyup();'>(A)</button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("~^\([AB]\) "); $("#searchinput").keyup();'>(B)</button>
@@ -271,7 +309,7 @@ func listTodoDir(c *gin.Context, dirName string, search string, clear bool, clie
     }
     for _, file := range files {
         // remove invisible files and dirs
-        if strings.HasPrefix(file.Name(), ".") || IsIgnoreDir(file) {
+        if strings.HasPrefix(file.Name(), ".") || (file.Name() == "contexts.txt") || IsIgnoreDir(file, search) {
             continue
         }
 
@@ -318,13 +356,18 @@ func getSessionSearch(search string, c *gin.Context) string {
     return search
 }
 
-func IsIgnoreDir(file os.FileInfo) bool {
-    return (file.IsDir() && (file.Name() == DIR_TEMPLATES)) || (file.IsDir() && (file.Name() == DIR_MAYBE))
+func IsIgnoreDir(file os.FileInfo, search string) bool {
+    return (file.IsDir() && (file.Name() == DIR_TEMPLATES)) ||
+		( !strings.Contains(search, "+maybe") && (file.IsDir() && (file.Name() == DIR_MAYBE)) )
 }
 
 func CheckFilterItem(search string, fileName string) bool {
     itemOk := true
-    trimSpace := strings.TrimSpace(search)
+
+	re := regexp.MustCompile(" *\\+maybe *")
+	search = re.ReplaceAllString(search, "")
+
+	trimSpace := strings.TrimSpace(search)
     if len(trimSpace) > 0 {
         if strings.HasPrefix(search, "~") {
             // regex
@@ -380,13 +423,25 @@ func encodeListId(dirList string) string {
 
 func renderSimpleItem(fileName string, dirName string) string {
 	style, taskId, clientId := prepareItem(fileName, dirName)
+
+	// prepare itemName
+	itemName := fileName
+	for _, element := range contexts {
+		itemName = strings.Replace(itemName, element, `<span style="color: darkcyan;" onclick='$("#searchinput").val("` + element + `"); $("#searchinput").keyup(); event.stopPropagation();'>` +
+			element + `</span>`, -1)
+	}
+
 	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">`+
-                	    `<span style="` + style + `" >` + fileName + `</span></a> ` +
+                	    `<span style="` + style + `" >` + itemName + `</span></a> ` +
             		"</li>\n"
 	return renderedItem
 }
 
 func renderFullItem(fileName string, dirName string) string {
+	if len(contexts) == 0 { // reboot server?
+		contexts = loadContexts()
+	}
+
 	style, taskId, clientId := prepareItem(fileName, dirName)
 
 	content := ""
@@ -417,6 +472,7 @@ func renderFullItem(fileName string, dirName string) string {
             <button type="button" ic-delete-from="/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i></a>
            </div>` + content +
 		getMoveDirs(taskId) +
+		getContexts(taskId, clientId) +
 		"</li>\n"
 	return renderedItem
 }
@@ -443,7 +499,23 @@ func getMoveDirs(taskId string) string {
 			continue
 		}
 		pathEscape :=  encodeListId(element)
-		result += `<button type="button" class="small" ic-post-to="/move/` + taskId + `/` + pathEscape + `" ic-target="main">` + element[1:] + `</button>`
+		result += `<button type="button" class="small" ic-post-to="/move/` + taskId + `/` + pathEscape + `" ic-target="main">` + element[1:] + `/</button>`
+		// element is the element from someSlice for where we are
+	}
+	return result
+}
+
+func getContexts(taskId string, clientId string) string {
+	result := ""
+	for _, element := range contexts {
+		//element = strings.TrimPrefix(element, todoPath)
+        //if (strings.TrimSpace(element) == "") || strings.HasPrefix(element, "/"+DIR_MAYBE) || strings.HasPrefix(element, "/"+DIR_TEMPLATES) {
+			//continue
+		//}context
+		//pathEscape :=  encodeListId(element)
+		///task/:task/context/:context
+		result += `<button type="button" class="small" ic-post-to="/task/` + taskId + `/context/` + element +
+			`" ic-target="#` + clientId + `" ic-replace-target="true">` + element + `</button>`
 		// element is the element from someSlice for where we are
 	}
 	return result
@@ -515,6 +587,31 @@ func taskPrio(c *gin.Context, prio string) {
 		newName = strings.TrimPrefix(oldName, donePrefix)
 	} else {
 		newName = donePrefix + RemoveAllPrio(oldName)
+	}
+
+	// rename file
+	err := os.Rename(filepath.Join(dir, oldName), filepath.Join(dir, newName))
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.Write([]byte(renderSimpleItem(newName, dir)))
+}
+
+func taskContext(c *gin.Context) {
+	dir, oldName := getTaskFromUrlPath(c)
+
+	context := c.Param("context")
+
+	// make new task name
+	var newName string
+	if strings.Contains(oldName, context) {
+		newName = strings.Replace(oldName, " " + context, "", -1)
+	} else {
+		ext := filepath.Ext(oldName)
+		basename := strings.TrimSuffix(oldName, ext)
+		newName = basename + " " + context + ext
 	}
 
 	// rename file
@@ -626,7 +723,7 @@ func addTask(c *gin.Context) {
     }
 
 	// make refresh index
-	
+
 	c.Writer.WriteHeader(http.StatusOK)
 	//c.Writer.Write([]byte(listTodoDir(path, "", false, cltgt)))
 }
