@@ -456,6 +456,7 @@ func renderFullItem(fileName string, dirName string) string {
 			content = string(output[:])
 		}
 	}
+	content = strings.Replace(content, "<a ", `<a target="_blank"`, -1)
 
 	maybeDirname := strings.Replace(dirName, todoPath, DIR_MAYBE, -1)
     maybeIdPath := 	url.PathEscape(strings.Replace(maybeDirname, "/", DIRSEP, -1))
