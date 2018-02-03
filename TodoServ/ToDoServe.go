@@ -307,7 +307,10 @@ func listTodoDir(c *gin.Context, dirName string, search string, clear bool, clie
     }
     for _, file := range files {
         // remove invisible files and dirs
-        if strings.HasPrefix(file.Name(), ".") || (file.Name() == "contexts.txt") || IsIgnoreDir(file, search) {
+        if strings.HasPrefix(file.Name(), ".") ||
+        		(file.Name() == "contexts.txt") ||
+        		strings.HasSuffix(file.Name(), "~") ||
+        		IsIgnoreDir(file, search) {
             continue
         }
 
