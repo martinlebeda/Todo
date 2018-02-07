@@ -1,12 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/satori/go.uuid"
 	"gopkg.in/russross/blackfriday.v2"
-    "github.com/gin-contrib/sessions"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,11 +15,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"regexp"
-	"bufio"
 )
 
 const DIR_MAYBE = "Maybe"
@@ -48,22 +48,21 @@ func main() {
 	router := gin.Default()
 
 	// client side store
-    store := sessions.NewCookieStore([]byte("wcvwrqwvbdtyjerh"))
-    router.Use(sessions.Sessions("TodoServe", store))
+	store := sessions.NewCookieStore([]byte("wcvwrqwvbdtyjerh"))
+	router.Use(sessions.Sessions("TodoServe", store))
 
 	// service
 	router.GET("/quit", quitServer)
 	//router.StaticFile("/favicon.ico", "resources/favicon.ico")
 	router.GET("/favicon.ico", func(c *gin.Context) {
-			data, err := Asset("resources/favicon.ico")
-            if err != nil {
-                log.Print("resources/favicon.ico not found")
-            }
+		data, err := Asset("resources/favicon.ico")
+		if err != nil {
+			log.Print("resources/favicon.ico not found")
+		}
 
-			c.Writer.WriteHeader(http.StatusOK)
-			c.Writer.Write(data)
-		})
-
+		c.Writer.WriteHeader(http.StatusOK)
+		c.Writer.Write(data)
+	})
 
 	// API for external app
 	router.POST("/insert", insertTodo) // for call from external (ie. browser extension)
@@ -126,8 +125,12 @@ func normalizeFileName(title string) string {
 		"/", " ",
 		".", " ",
 		":", " ",
+		"?", " ",
+		"!", " ",
 		"\\", " ")
-	return r.Replace(title)
+	nrmt := r.Replace(title)
+	nrmt = strings.TrimSpace(nrmt)
+	return nrmt
 }
 
 func listTodo(c *gin.Context) {
@@ -141,7 +144,7 @@ func search(c *gin.Context) {
 	search := c.PostForm("search")
 
 	// store param to session
-    session := sessions.Default(c)
+	session := sessions.Default(c)
 	session.Set("search", search)
 	session.Save()
 
@@ -156,22 +159,22 @@ func clear(c *gin.Context) {
 }
 
 func loadContexts() []string {
-      f, err := os.Open(filepath.Join(todoPath, "contexts.txt"))
-      if err != nil {
-		  log.Println("Unable to load contexts.txt")
-      }
-      defer f.Close()
+	f, err := os.Open(filepath.Join(todoPath, "contexts.txt"))
+	if err != nil {
+		log.Println("Unable to load contexts.txt")
+	}
+	defer f.Close()
 
-      var lines []string
-      scanner := bufio.NewScanner(f)
-      for scanner.Scan() {
-              lines = append(lines, scanner.Text())
-      }
-      if err := scanner.Err(); err != nil {
-              fmt.Fprintln(os.Stderr, err)
-      }
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
 
-      return lines
+	return lines
 }
 
 func getIndexList(c *gin.Context) string {
@@ -240,7 +243,7 @@ func getIndexList(c *gin.Context) string {
         <body style="height: 100vh; display: flex; flex-direction: column;">
         <header style="flex-grow: 1; min-height: 44px; display: flex;">
             <input id="searchinput" type="text" style=" padding: 5px; flex-grow: 999;" name="search" ic-post-to="/search" ic-trigger-on="keyup changed"
-                           ic-trigger-delay="500ms" ic-target="main" placeholder="search (~regex) (+maybe)" value="`+ getSessionSearch("", c) +`">
+                           ic-trigger-delay="500ms" ic-target="main" placeholder="search (~regex) (+maybe)" value="` + getSessionSearch("", c) + `">
             <button type="button" id="searchclear" onclick='$("#searchinput").val(""); $("#searchinput").keyup();'><i class="fas fa-arrow-left"></i></button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("(A) "); $("#searchinput").keyup();'>(A)</button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("~^\([AB]\) "); $("#searchinput").keyup();'>(B)</button>
@@ -298,98 +301,98 @@ func getIndexList(c *gin.Context) string {
 func listTodoDir(c *gin.Context, dirName string, search string, clear bool, clientListId string) string {
 	body := `<ul id="` + clientListId + `">`
 
-    search = getSessionSearch(search, c)
+	search = getSessionSearch(search, c)
 
-    // walk directories
-    files, err := ioutil.ReadDir(dirName)
-    if err != nil {
-        log.Fatal(err)
-    }
-    for _, file := range files {
-        // remove invisible files and dirs
-        if strings.HasPrefix(file.Name(), ".") ||
-        		(file.Name() == "contexts.txt") ||
-        		strings.HasSuffix(file.Name(), "~") ||
-        		IsIgnoreDir(file, search) {
-            continue
-        }
+	// walk directories
+	files, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, file := range files {
+		// remove invisible files and dirs
+		if strings.HasPrefix(file.Name(), ".") ||
+			(file.Name() == "contexts.txt") ||
+			strings.HasSuffix(file.Name(), "~") ||
+			IsIgnoreDir(file, search) {
+			continue
+		}
 
-        dirList := filepath.Join(dirName, file.Name())
-        if file.IsDir() {
-            // if directory is ok for search -> all item is ok too
-            subsearch := search
-            if CheckFilterItem(search, file.Name()) {
-                subsearch = ""
-            }
-            body += renderList(c, dirList, subsearch, clear)
-        } else {
-            // clear
-            if clear && strings.HasPrefix(file.Name(), DONEPREFIX) {
-                os.Remove(dirList)
-                continue
-            }
+		dirList := filepath.Join(dirName, file.Name())
+		if file.IsDir() {
+			// if directory is ok for search -> all item is ok too
+			subsearch := search
+			if CheckFilterItem(search, file.Name()) {
+				subsearch = ""
+			}
+			body += renderList(c, dirList, subsearch, clear)
+		} else {
+			// clear
+			if clear && strings.HasPrefix(file.Name(), DONEPREFIX) {
+				os.Remove(dirList)
+				continue
+			}
 
-            // remove by filter
-            itemOk := CheckFilterItem(search, file.Name())
-            if !itemOk {
-                continue
-            }
+			// remove by filter
+			itemOk := CheckFilterItem(search, file.Name())
+			if !itemOk {
+				continue
+			}
 
-            // render item
-            body += renderSimpleItem(file.Name(), dirName)
-        }
-    }
+			// render item
+			body += renderSimpleItem(file.Name(), dirName)
+		}
+	}
 
-    body += "</ul>\n"
+	body += "</ul>\n"
 
-    return body
+	return body
 }
 
 // load search from session
 func getSessionSearch(search string, c *gin.Context) string {
-    if search == "" && c != nil {
-        session := sessions.Default(c)
-        s := session.Get("search")
-        if s != nil {
-            search = s.(string)
-        }
-    }
-    return search
+	if search == "" && c != nil {
+		session := sessions.Default(c)
+		s := session.Get("search")
+		if s != nil {
+			search = s.(string)
+		}
+	}
+	return search
 }
 
 func IsIgnoreDir(file os.FileInfo, search string) bool {
-    return (file.IsDir() && (file.Name() == DIR_TEMPLATES)) ||
-		( !strings.Contains(search, "+maybe") && (file.IsDir() && (file.Name() == DIR_MAYBE)) )
+	return (file.IsDir() && (file.Name() == DIR_TEMPLATES)) ||
+		(!strings.Contains(search, "+maybe") && (file.IsDir() && (file.Name() == DIR_MAYBE)))
 }
 
 func CheckFilterItem(search string, fileName string) bool {
-    itemOk := true
+	itemOk := true
 
 	re := regexp.MustCompile(" *\\+maybe *")
 	search = re.ReplaceAllString(search, "")
 
 	trimSpace := strings.TrimSpace(search)
-    if len(trimSpace) > 0 {
-        if strings.HasPrefix(search, "~") {
-            // regex
-            search = strings.TrimPrefix(search, "~")
-            pattern := strings.Replace(search, "(", "\\(", -1)
-            pattern = strings.Replace(pattern, ")", "\\)", -1)
-            pattern = "(?i)" + pattern
-            matched, _ := regexp.MatchString(pattern, fileName)
-            if !matched {
-                itemOk = false
-            }
-        } else {
-            // simple search
-            normSearch := NormalizeString(search)
-            normName := NormalizeString(fileName)
-            if normSearch != "" && !strings.Contains(normName, normSearch) {
-                itemOk = false
-            }
-        }
-    }
-    return itemOk
+	if len(trimSpace) > 0 {
+		if strings.HasPrefix(search, "~") {
+			// regex
+			search = strings.TrimPrefix(search, "~")
+			pattern := strings.Replace(search, "(", "\\(", -1)
+			pattern = strings.Replace(pattern, ")", "\\)", -1)
+			pattern = "(?i)" + pattern
+			matched, _ := regexp.MatchString(pattern, fileName)
+			if !matched {
+				itemOk = false
+			}
+		} else {
+			// simple search
+			normSearch := NormalizeString(search)
+			normName := NormalizeString(fileName)
+			if normSearch != "" && !strings.Contains(normName, normSearch) {
+				itemOk = false
+			}
+		}
+	}
+	return itemOk
 }
 
 func renderList(c *gin.Context, dirList string, search string, clear bool) string {
@@ -398,9 +401,9 @@ func renderList(c *gin.Context, dirList string, search string, clear bool) strin
 						                    ic-post-to="/list/` + listId + `/add"        
 						                    ic-prompt="New task in ` + base + `:" ic-include='{"cltgt": "` + clientId + `"}'
 						                    >` + base + "</span></a>\n"
-    body += listTodoDir(c, dirList, search, clear, clientId)
-    body += "</li>\n"
-    return body
+	body += listTodoDir(c, dirList, search, clear, clientId)
+	body += "</li>\n"
+	return body
 }
 
 func prepareList(dirList string) (string, string, string, string) {
@@ -410,16 +413,16 @@ func prepareList(dirList string) (string, string, string, string) {
 	if strings.HasPrefix(base, "(A) ") {
 		style += "font-weight: bold;"
 	} else {
-    	style += "font-size: small;"
-	    style += "font-style: italic;"
-    }
-    listId := encodeListId(dirList)
-    clientId := uuid.Must(uuid.NewV4()).String()
+		style += "font-size: small;"
+		style += "font-style: italic;"
+	}
+	listId := encodeListId(dirList)
+	clientId := uuid.Must(uuid.NewV4()).String()
 	return base, style, listId, clientId
 }
 
 func encodeListId(dirList string) string {
-    return url.PathEscape(strings.Replace(dirList, "/", DIRSEP, -1))
+	return url.PathEscape(strings.Replace(dirList, "/", DIRSEP, -1))
 }
 
 func renderSimpleItem(fileName string, dirName string) string {
@@ -428,13 +431,13 @@ func renderSimpleItem(fileName string, dirName string) string {
 	// prepare itemName
 	itemName := fileName
 	for _, element := range contexts {
-		itemName = strings.Replace(itemName, element, `<span style="color: darkcyan;" onclick='$("#searchinput").val("` + element + `"); $("#searchinput").keyup(); event.stopPropagation();'>` +
-			element + `</span>`, -1)
+		itemName = strings.Replace(itemName, element, `<span style="color: darkcyan;" onclick='$("#searchinput").val("`+element+`"); $("#searchinput").keyup(); event.stopPropagation();'>`+
+			element+`</span>`, -1)
 	}
 
-	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">`+
-                	    `<span style="` + style + `" >` + itemName + `</span></a> ` +
-            		"</li>\n"
+	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">` +
+		`<span style="` + style + `" >` + itemName + `</span></a> ` +
+		"</li>\n"
 	return renderedItem
 }
 
@@ -459,7 +462,7 @@ func renderFullItem(fileName string, dirName string) string {
 	content = strings.Replace(content, "<a ", `<a target="_blank"`, -1)
 
 	maybeDirname := strings.Replace(dirName, todoPath, DIR_MAYBE, -1)
-    maybeIdPath := 	url.PathEscape(strings.Replace(maybeDirname, "/", DIRSEP, -1))
+	maybeIdPath := url.PathEscape(strings.Replace(maybeDirname, "/", DIRSEP, -1))
 
 	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `" ic-target="#` + clientId + `" ic-replace-target="true">
                         <span style="` + style + `">` + fileName + `</span> ` +
@@ -497,10 +500,10 @@ func getMoveDirs(taskId string) string {
 	result := ""
 	for _, element := range GetDirectories() {
 		element = strings.TrimPrefix(element, todoPath)
-        if (strings.TrimSpace(element) == "") || strings.HasPrefix(element, "/"+DIR_MAYBE) || strings.HasPrefix(element, "/"+DIR_TEMPLATES) {
+		if (strings.TrimSpace(element) == "") || strings.HasPrefix(element, "/"+DIR_MAYBE) || strings.HasPrefix(element, "/"+DIR_TEMPLATES) {
 			continue
 		}
-		pathEscape :=  encodeListId(element)
+		pathEscape := encodeListId(element)
 		result += `<button type="button" class="small" ic-post-to="/move/` + taskId + `/` + pathEscape + `" ic-target="main">` + element[1:] + `/</button>`
 		// element is the element from someSlice for where we are
 	}
@@ -511,8 +514,8 @@ func getContexts(taskId string, clientId string) string {
 	result := ""
 	for _, element := range contexts {
 		//element = strings.TrimPrefix(element, todoPath)
-        //if (strings.TrimSpace(element) == "") || strings.HasPrefix(element, "/"+DIR_MAYBE) || strings.HasPrefix(element, "/"+DIR_TEMPLATES) {
-			//continue
+		//if (strings.TrimSpace(element) == "") || strings.HasPrefix(element, "/"+DIR_MAYBE) || strings.HasPrefix(element, "/"+DIR_TEMPLATES) {
+		//continue
 		//}context
 		//pathEscape :=  encodeListId(element)
 		///task/:task/context/:context
@@ -601,7 +604,7 @@ func taskContext(c *gin.Context) {
 	// make new task name
 	var newName string
 	if strings.Contains(oldName, context) {
-		newName = strings.Replace(oldName, " " + context, "", -1)
+		newName = strings.Replace(oldName, " "+context, "", -1)
 	} else {
 		ext := filepath.Ext(oldName)
 		basename := strings.TrimSuffix(oldName, ext)
@@ -642,21 +645,21 @@ func moveTask(c *gin.Context) {
 	tgtDir, err := url.PathUnescape(c.Param("dir"))
 	if err != nil {
 		log.Println("Unable render task '" + tgtDir)
-        return
+		return
 	}
 	tgtDir = strings.Replace(tgtDir, DIRSEP, "/", -1)
 	tgtDir = filepath.Join(todoPath, tgtDir)
 
 	// create dir if not exists
-    err = os.MkdirAll(tgtDir, os.ModePerm)
-    if err != nil {
-        log.Println("Unable create target directory: " + tgtDir)
-        return
-    }
+	err = os.MkdirAll(tgtDir, os.ModePerm)
+	if err != nil {
+		log.Println("Unable create target directory: " + tgtDir)
+		return
+	}
 
 	// do rename
 	errRename := os.Rename(filepath.Join(dir, name), filepath.Join(tgtDir, name))
-    c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(tgtDir) + "," + "/list/" + encodeListId(dir))
+	c.Writer.Header().Add("X-IC-Refresh", "/list/"+encodeListId(tgtDir)+","+"/list/"+encodeListId(dir))
 	if errRename != nil {
 		log.Fatal(errRename)
 	}
@@ -670,10 +673,10 @@ func moveTask(c *gin.Context) {
 func listRender(c *gin.Context) {
 	path, err := decodePath(c)
 
-    if err != nil {
-        log.Println("Unable render list")
-        return
-    }
+	if err != nil {
+		log.Println("Unable render list")
+		return
+	}
 
 	//cltgt := c.PostForm("cltgt")
 
@@ -698,23 +701,23 @@ func addTask(c *gin.Context) {
 	name := c.PostForm("ic-prompt-value")
 
 	if name == "-" {
-	    listDeleteIfEmpty(filepath.Join(path))
-        parentDir := filepath.Dir(path)
-        c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(parentDir))
-    } else if strings.HasPrefix(name, "/") {
-	    // create directory
-	    name = strings.TrimSpace(name)
-        err = os.Mkdir(filepath.Join(path, normalizeFileName(name)), os.ModePerm)
-        if err != nil {
-            log.Fatal(err)
-        }
-    } else {
-        // create file
-        _, err = os.Create(filepath.Join(path, normalizeFileName(name)+".txt"))
-        if err != nil {
-            log.Fatal(err)
-        }
-    }
+		listDeleteIfEmpty(filepath.Join(path))
+		parentDir := filepath.Dir(path)
+		c.Writer.Header().Add("X-IC-Refresh", "/list/"+encodeListId(parentDir))
+	} else if strings.HasPrefix(name, "/") {
+		// create directory
+		name = strings.TrimSpace(name)
+		err = os.Mkdir(filepath.Join(path, normalizeFileName(name)), os.ModePerm)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		// create file
+		_, err = os.Create(filepath.Join(path, normalizeFileName(name)+".txt"))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	// make refresh index
 
@@ -732,23 +735,23 @@ func taskDelete(c *gin.Context) {
 
 	listDeleteIfEmpty(filepath.Join(dir))
 
-    parentDir := filepath.Dir(dir)
-    c.Writer.Header().Add("X-IC-Refresh", "/list/" + encodeListId(parentDir))
+	parentDir := filepath.Dir(dir)
+	c.Writer.Header().Add("X-IC-Refresh", "/list/"+encodeListId(parentDir))
 	c.Writer.WriteHeader(http.StatusOK)
 	c.Writer.Header().Add("X-IC-Remove", "true")
 }
 
 func listDeleteIfEmpty(dir string) {
-    isEmpty, err := IsEmpty(dir)
-    if err != nil {
-        log.Fatal(err)
-    }
-    if isEmpty {
-        err = os.Remove(dir)
-        if err != nil {
-            log.Fatal(err)
-        }
-    }
+	isEmpty, err := IsEmpty(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if isEmpty {
+		err = os.Remove(dir)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 // Returns the names of the subdirectories (including their paths)
