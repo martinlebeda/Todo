@@ -425,18 +425,20 @@ func encodeListId(dirList string) string {
 	return url.PathEscape(strings.Replace(dirList, "/", DIRSEP, -1))
 }
 
+func renderContexts(fileName string) string {
+	itemName := fileName
+	for _, element := range contexts {
+		itemName = strings.Replace(itemName, element, `<span style="color: darkcyan;" onclick='$("#searchinput").val("` + element + `"); $("#searchinput").keyup(); event.stopPropagation();'>`+
+			element+ `</span>`, -1)
+	}
+    return itemName
+}
+
 func renderSimpleItem(fileName string, dirName string) string {
 	style, taskId, clientId := prepareItem(fileName, dirName)
 
-	// prepare itemName
-	itemName := fileName
-	for _, element := range contexts {
-		itemName = strings.Replace(itemName, element, `<span style="color: darkcyan;" onclick='$("#searchinput").val("`+element+`"); $("#searchinput").keyup(); event.stopPropagation();'>`+
-			element+`</span>`, -1)
-	}
-
 	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `/full" ic-target="#` + clientId + `" ic-replace-target="true">` +
-		`<span style="` + style + `" >` + itemName + `</span></a> ` +
+		`<span style="` + style + `" >` + renderContexts(fileName) + `</span></a> ` +
 		"</li>\n"
 	return renderedItem
 }
@@ -465,7 +467,7 @@ func renderFullItem(fileName string, dirName string) string {
 	maybeIdPath := url.PathEscape(strings.Replace(maybeDirname, "/", DIRSEP, -1))
 
 	renderedItem := `<li id="` + clientId + `"><a class="nolink" ic-get-from="/task/` + taskId + `" ic-target="#` + clientId + `" ic-replace-target="true">
-                        <span style="` + style + `">` + fileName + `</span> ` +
+                        <span style="` + style + `">` + renderContexts(fileName) + `</span> ` +
 		`<div>
             <button type="button" ic-post-to="/task/` + taskId + `/done" ic-target="#` + clientId + `" ic-replace-target="true"><i class="fas fa-check"></i></button>
             <button type="button" ic-get-from="/task/` + taskId + `/edit"><i class="fas fa-pencil-alt"></i></button>
@@ -746,12 +748,16 @@ func listDeleteIfEmpty(dir string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if isEmpty {
+	if isEmpty && !isRoot(dir, todoPath) {
 		err = os.Remove(dir)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
+}
+
+func isRoot(dir string, root string) bool {
+    return filepath.Dir(dir) == root
 }
 
 // Returns the names of the subdirectories (including their paths)

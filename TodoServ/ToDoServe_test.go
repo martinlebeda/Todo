@@ -27,3 +27,8 @@ func TestCheckFilterItem(t *testing.T) {
     //fmt.Println(err)
                                                                           //
 }
+
+func TestIsRoot(t *testing.T) {
+    if !isRoot("/home/martin/Todo/tst", "/home/martin/Todo") { t.Error("path is in root") }
+    if isRoot("/home/martin/Todo/tst/aaa", "/home/martin/Todo") { t.Error("path is not in root") }
+}
