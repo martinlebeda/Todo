@@ -561,7 +561,7 @@ func taskDone(c *gin.Context) {
 	if strings.HasPrefix(oldName, DONEPREFIX) {
 		newName = strings.TrimPrefix(oldName, DONEPREFIX)
 	} else {
-		newName = DONEPREFIX + RemoveAllPrio(oldName)
+		newName = DONEPREFIX + RemoveAllTags(oldName)
 	}
 
 	// rename file
@@ -626,6 +626,21 @@ func taskContext(c *gin.Context) {
 func RemoveAllPrio(name string) string {
 	r, _ := regexp.Compile("^\\(.\\) ")
 	return r.ReplaceAllString(name, "")
+}
+
+func RemoveAllTags(name string) string {
+	wkName := RemoveAllPrio(name)
+
+	for _, element := range contexts {
+        wkName = strings.Replace(wkName, element, "", -1)
+	}
+
+	r, _ := regexp.Compile(" +")
+	wkName = r.ReplaceAllString(wkName, " ")
+
+	wkName = strings.Replace(wkName, " .", ".", -1)
+
+	return wkName
 }
 
 func taskEdit(c *gin.Context) {
