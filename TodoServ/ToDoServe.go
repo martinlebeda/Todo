@@ -26,6 +26,9 @@ const DIR_TEMPLATES = "Templates"
 
 var todoPath = ""
 var editCommand = ""
+var taskSuffix = ""
+var noteSuffix = ""
+var notePath = ""
 var contexts []string
 
 const DIRSEP = "~"
@@ -37,8 +40,14 @@ func main() {
 	// path to inbox with default value
 	inboxDefault := filepath.Join(os.Getenv("HOME"), "Todo")
 	flag.StringVar(&todoPath, "path", inboxDefault, "path for executable scripts")
+
 	editorDefault := os.Getenv("EDITOR")
 	flag.StringVar(&editCommand, "editor", editorDefault, "editor for underlaying files")
+
+	flag.StringVar(&taskSuffix, "tasksuffix", ".txt", "suffix for task files (default '.txt')")
+	flag.StringVar(&noteSuffix, "notesuffix", ".md", "suffix for note files (default '.md')")
+	flag.StringVar(&notePath, "notepath", "", "path for note files")
+
 	flag.Parse()
 
 	// check existence path
@@ -84,6 +93,7 @@ func main() {
 	router.POST("/task/:task/prio/:prio", taskPrio)
 	router.POST("/task/:task/context/:context", taskContext)
 	router.GET("/task/:task/edit", taskEdit)
+	router.GET("/task/:task/note", taskNote)
 	router.DELETE("/task/:task/delete", taskDelete)
 
 	// set listen port
@@ -471,7 +481,7 @@ func renderFullItem(fileName string, dirName string) string {
 		`<div>
             <button type="button" ic-post-to="/task/` + taskId + `/done" ic-target="#` + clientId + `" ic-replace-target="true"><i class="fas fa-check"></i></button>
             <button type="button" ic-get-from="/task/` + taskId + `/edit"><i class="fas fa-pencil-alt"></i></button>
-            <button type="button" ic-post-to="/task/` + taskId + `/rename"><i class="far fa-edit"></i></button>
+            <button type="button" ic-get-from="/task/` + taskId + `/note"><i class="far fa-edit"></i></button>
             <button type="button" ic-post-to="/task/` + taskId + `/prio/A" ic-target="#` + clientId + `" ic-replace-target="true">(A)</button>
             <button type="button" ic-post-to="/task/` + taskId + `/prio/B" ic-target="#` + clientId + `" ic-replace-target="true">(B)</button>
             <button type="button" ic-post-to="/task/` + taskId + `/prio/C" ic-target="#` + clientId + `" ic-replace-target="true">(C)</button>
@@ -647,6 +657,23 @@ func taskEdit(c *gin.Context) {
 	dir, name := getTaskFromUrlPath(c)
 
 	cmd := exec.Command(editCommand, filepath.Join(dir, name))
+	err := cmd.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	c.Writer.WriteHeader(http.StatusOK)
+}
+
+func taskNote(c *gin.Context) {
+	_, name := getTaskFromUrlPath(c)
+
+	name = RemoveAllTags(name)
+	name = strings.TrimSuffix(name, taskSuffix)
+	name = name + noteSuffix
+
+    path := filepath.Join(notePath, name)
+    cmd := exec.Command(editCommand, path)
 	err := cmd.Start()
 	if err != nil {
 		log.Fatal(err)
