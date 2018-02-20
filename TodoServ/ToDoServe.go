@@ -488,8 +488,8 @@ func renderFullItem(fileName string, dirName string) string {
             <button type="button" ic-post-to="/move/` + taskId + `/` + maybeIdPath + `" ic-target="main"><i class="fas fa-archive"></i></button>
             <button type="button" ic-delete-from="/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i></a>
            </div>` + content +
-		getMoveDirs(taskId) +
-		getContexts(taskId, clientId) +
+		`<div>` + getMoveDirs(taskId) + `</div>` +
+		`<div>` + getContexts(taskId, clientId) + `</div>` +
 		"</li>\n"
 	return renderedItem
 }
