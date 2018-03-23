@@ -1,10 +1,11 @@
 TodoServ/libraries
+TodoServ/bindata.go
+TodoServ/TodoServe
+TodoServ/tst.html
+TodoServ/install.sh
+TodoServ/.idea
 
 
 # TODO - change later
 TodoChrome.crx
 TodoChrome.pem
-TodoServ/TodoServe
-TodoServ/tst.html
-TodoServ/install.sh
-TodoServ/.idea
