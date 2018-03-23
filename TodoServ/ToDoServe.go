@@ -16,9 +16,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+    "strconv"
 )
 
 const DIR_MAYBE = "Maybe"
@@ -60,8 +60,28 @@ func main() {
 	store := sessions.NewCookieStore([]byte("wcvwrqwvbdtyjerh"))
 	router.Use(sessions.Sessions("TodoServe", store))
 
-	// service
-	router.GET("/quit", quitServer)
+
+    // service
+    router.GET("/quit", quitServer)
+
+    router.GET("resources/:res", func(c *gin.Context) {
+        resName := c.Param("res")
+        data, err := Asset("resources/" + resName)
+        if err != nil {
+            log.Print("resources/" + resName + " not found")
+        }
+
+        if strings.HasSuffix(resName, ".css") {
+            c.Header("Content-Type", "text/css; charset=utf-8")
+        }
+        c.Writer.WriteHeader(http.StatusOK)
+        c.Writer.Write(data)
+
+        // another case:
+        //context.Data(200, "application/json; charset=utf-8", []byte(someString))
+    })
+
+	// for favicon need special path
 	//router.StaticFile("/favicon.ico", "resources/favicon.ico")
 	router.GET("/favicon.ico", func(c *gin.Context) {
 		data, err := Asset("resources/favicon.ico")
@@ -84,6 +104,8 @@ func main() {
 
 	// manage lists
 	router.GET("/list/:path", listRender)
+    router.GET("/list/:path/full", renderFullHeaderList)
+    router.GET("/list/:path/simple", renderSimpleHeaderList)
 	router.POST("/list/:path/add", addTask)
 
 	// manage tasks
@@ -95,6 +117,7 @@ func main() {
 	router.GET("/task/:task/edit", taskEdit)
 	router.GET("/task/:task/note", taskNote)
 	router.DELETE("/task/:task/delete", taskDelete)
+
 
 	// set listen port
 	portNumberStr := strconv.Itoa(*numbPtr)
@@ -201,14 +224,13 @@ func getIndexList(c *gin.Context) string {
 			<link rel="icon" href="/favicon.ico" type="image/x-icon">
             <title>Todo</title>
 
-            <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/jquery.hotkeys@0.1.0/jquery.hotkeys.min.js"></script>
-			<!-- script src="http://nekman.github.io/keynavigator/keynavigator-min.js"></script -->
-            <script src="https://intercoolerreleases-leaddynocom.netdna-ssl.com/intercooler-1.2.1.min.js"></script>
-            <script defer src="https://use.fontawesome.com/releases/v5.0.3/js/all.js"></script>
+            <script src="resources/jquery-3.1.1.min.js"></script>
+            <script src="resources/jquery.hotkeys.min.js"></script>
+			<!-- script src="http://nekman.github.io/keynavieator/keynavigator-min.js"></script -->
+            <script src="resources/intercooler-1.2.1.min.js"></script>
+            <script defer src="resources/fontawesome.all.js"></script>
 
-            <!-- link rel="stylesheet" href="https://gitcdn.link/repo/Chalarangelo/mini.css/master/dist/mini-default.min.css" -->
-            <link rel="stylesheet" href="https://gitcdn.link/repo/Chalarangelo/mini.css/master/dist/mini-dark.min.css">
+            <link rel="stylesheet" href="resources/mini-dark.min.css">
             <style>
                 .hiddencontrols {
                     visibility: hidden;
@@ -256,8 +278,8 @@ func getIndexList(c *gin.Context) string {
                            ic-trigger-delay="500ms" ic-target="main" placeholder="search (~regex) (+maybe)" value="` + getSessionSearch("", c) + `">
             <button type="button" id="searchclear" onclick='$("#searchinput").val(""); $("#searchinput").keyup();'><i class="fas fa-arrow-left"></i></button>
             <button type="button" id="search_a" onclick='$("#searchinput").val("(A) "); $("#searchinput").keyup();'>(A)</button>
-            <button type="button" id="search_a" onclick='$("#searchinput").val("~^\([AB]\) "); $("#searchinput").keyup();'>(B)</button>
-            <button type="button" id="search_a" onclick='$("#searchinput").val("~^\([ABC]\) "); $("#searchinput").keyup();'>(C)</button>
+            <button type="button" id="search_ab" onclick='$("#searchinput").val("~^\([AB]\) "); $("#searchinput").keyup();'>(B)</button>
+            <button type="button" id="search_abc" onclick='$("#searchinput").val("~^\([ABC]\) "); $("#searchinput").keyup();'>(C)</button>
             <button type="button" id="clearrepo" ic-post-to="/clear" ic-target="main"><i class="fas fa-trash-alt"></i></button>
         </header>
         <main style="flex-grow: 999; overflow-y: scroll;">
@@ -407,13 +429,77 @@ func CheckFilterItem(search string, fileName string) bool {
 
 func renderList(c *gin.Context, dirList string, search string, clear bool) string {
 	base, style, listId, clientId := prepareList(dirList)
-	body := `<li ic-src="/list/` + listId + `" ic-replace-target="true"><a class="nolink"><span style="` + style + `" 
-						                    ic-post-to="/list/` + listId + `/add"        
-						                    ic-prompt="New task in ` + base + `:" ic-include='{"cltgt": "` + clientId + `"}'
-						                    >` + base + "</span></a>\n"
+	body := `<li id="list`+listId+`" ic-src="/list/` + listId + `" ic-replace-target="true">` +
+	        renderSimpleList(base, style, listId, clientId)
+
 	body += listTodoDir(c, dirList, search, clear, clientId)
 	body += "</li>\n"
 	return body
+}
+
+func renderSimpleList(base , style, listId, clientId string) string {
+    return `<a class="nolink">
+                        <span style="` + style + `" ic-get-from="/list/` + listId + `/full" >` + base + `</span>
+                    </a>`
+}
+
+func renderFullList(base , style, listId, clientId string) string {
+    // TODO Lebeda - přidat buttons, click call ic-get-from="/list/` + listId + `/simple"
+	body := `<a class="nolink">
+                <span style="` + style + `" 
+                    ic-post-to="/list/` + listId + `/add" 
+                    ic-prompt="New task in ` + base + `:" 
+                    ic-include='{"cltgt": "` + clientId + `"}' >
+                ` + base + `</span>
+                <div>
+                  <form>
+                     <input type="text" name="newList" placeholder="new task" autofocus style="width: 70%;">
+                     <button type="submit" value="task" title="add new task"><i class="fas fa-plus"></i></button>
+                     <button type="submit" value="dir" title="add new sublist"><i class="far fa-folder"></i></button>
+                     <button type="submit" value="rename" title="rename list"><i class="far fa-clone"></i></button>
+
+                     <button type="button" 
+                        ic-delete-from="/list/` + listId + `/delete" 
+                        ic-target="#` + clientId + `" 
+                        title="force delete list">
+                        <i class="fas fa-trash-alt"></i>
+                     </button>
+                  </form>
+                </div>
+            </a>`
+	return body
+}
+
+func renderFullHeaderList(c *gin.Context) {
+    path, err := decodePath(c)
+
+    if err != nil {
+        log.Println("Unable render list")
+        return
+    }
+
+    base, style, listId, clientId := prepareList(path)
+    //cltgt := c.PostForm("cltgt")
+
+    // make refresh index
+    c.Writer.WriteHeader(http.StatusOK)
+    c.Writer.Write([]byte(renderFullList(base, style, listId, clientId)))
+}
+
+func renderSimpleHeaderList(c *gin.Context) {
+    path, err := decodePath(c)
+
+    if err != nil {
+        log.Println("Unable render list")
+        return
+    }
+
+    base, style, listId, clientId := prepareList(path)
+    //cltgt := c.PostForm("cltgt")
+
+    // make refresh index
+    c.Writer.WriteHeader(http.StatusOK)
+    c.Writer.Write([]byte(renderSimpleList(base, style, listId, clientId)))
 }
 
 func prepareList(dirList string) (string, string, string, string) {
@@ -486,7 +572,7 @@ func renderFullItem(fileName string, dirName string) string {
             <button type="button" ic-post-to="/task/` + taskId + `/prio/B" ic-target="#` + clientId + `" ic-replace-target="true">(B)</button>
             <button type="button" ic-post-to="/task/` + taskId + `/prio/C" ic-target="#` + clientId + `" ic-replace-target="true">(C)</button>
             <button type="button" ic-post-to="/move/` + taskId + `/` + maybeIdPath + `" ic-target="main"><i class="fas fa-archive"></i></button>
-            <button type="button" ic-delete-from="/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i></a>
+            <button type="button" ic-delete-from="/task/` + taskId + `/delete" ic-target="#` + clientId + `"><i class="fas fa-trash-alt"></i>
            </div>` + content +
 		`<div>` + getMoveDirs(taskId) + `</div>` +
 		`<div>` + getContexts(taskId, clientId) + `</div>` +
@@ -714,7 +800,7 @@ func moveTask(c *gin.Context) {
 	//c.Writer.Write([]byte(listTodoDir(todoPath, "", false, "")))
 }
 
-func listRender(c *gin.Context) {
+func listRender(c *gin.Context) { // TODO Lebeda - zajistit lambdou
 	path, err := decodePath(c)
 
 	if err != nil {
