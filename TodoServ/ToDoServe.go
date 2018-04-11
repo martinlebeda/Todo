@@ -106,7 +106,7 @@ func main() {
 	router.GET("/list/:path", listRender)
     router.GET("/list/:path/full", renderFullHeaderList)
     router.GET("/list/:path/simple", renderSimpleHeaderList)
-	router.POST("/list/:path/add", addTask)
+	router.POST("/list/:path/frm", listFrm)
 
 	// manage tasks
 	router.GET("/task/:task", taskSimpleRender)
@@ -429,12 +429,15 @@ func CheckFilterItem(search string, fileName string) bool {
 
 func renderList(c *gin.Context, dirList string, search string, clear bool) string {
 	base, style, listId, clientId := prepareList(dirList)
-	body := `<li id="list`+listId+`" ic-src="/list/` + listId + `" ic-replace-target="true">` +
-	        renderSimpleList(base, style, listId, clientId)
+    if _, err := os.Stat(dirList); err == nil {
+        body := `<li id="list` + listId + `" ic-src="/list/` + listId + `" ic-replace-target="true">` +
+            renderSimpleList(base, style, listId, clientId)
 
-	body += listTodoDir(c, dirList, search, clear, clientId)
-	body += "</li>\n"
-	return body
+        body += listTodoDir(c, dirList, search, clear, clientId)
+        body += "</li>\n"
+        return body
+    }
+    return ""
 }
 
 func renderSimpleList(base , style, listId, clientId string) string {
@@ -447,23 +450,17 @@ func renderFullList(base , style, listId, clientId string) string {
     // TODO Lebeda - přidat buttons, click call ic-get-from="/list/` + listId + `/simple"
 	body := `<a class="nolink">
                 <span style="` + style + `" 
-                    ic-post-to="/list/` + listId + `/add" 
-                    ic-prompt="New task in ` + base + `:" 
-                    ic-include='{"cltgt": "` + clientId + `"}' >
+                    ic-get-from="/list/` + listId + `/simple"
+                    ic-replace-target="true"
+                    ic-target="#` + clientId + `" >
                 ` + base + `</span>
                 <div>
-                  <form>
+                  <form ic-post-to="/list/` + listId + `/frm" ic-include='{"cltgt": "` + clientId + `"}'>
                      <input type="text" name="newList" placeholder="new task" autofocus style="width: 70%;">
-                     <button type="submit" value="task" title="add new task"><i class="fas fa-plus"></i></button>
-                     <button type="submit" value="dir" title="add new sublist"><i class="far fa-folder"></i></button>
-                     <button type="submit" value="rename" title="rename list"><i class="far fa-clone"></i></button>
-
-                     <button type="button" 
-                        ic-delete-from="/list/` + listId + `/delete" 
-                        ic-target="#` + clientId + `" 
-                        title="force delete list">
-                        <i class="fas fa-trash-alt"></i>
-                     </button>
+                     <button type="submit" name="action" value="task" title="add new task"><i class="fas fa-plus"></i></button>
+                     <button type="submit" name="action" value="dir" title="add new sublist"><i class="far fa-folder"></i></button>
+                     <button type="submit" name="action" value="rename" title="rename list"><i class="far fa-clone"></i></button>
+                     <button type="submit" name="action" value="delete" title="delete list"><i class="fas fa-trash-alt"></i></button>
                   </form>
                 </div>
             </a>`
@@ -824,23 +821,33 @@ func decodePath(c *gin.Context) (string, error) {
 	return path, err
 }
 
-func addTask(c *gin.Context) {
+func listFrm(c *gin.Context) {
 	path, err := decodePath(c)
 
 	//cltgt := c.PostForm("cltgt")
-	name := c.PostForm("ic-prompt-value")
+	name := c.PostForm("newList")
+	action := c.PostForm("action")
+	fmt.Println(action)
 
 	if name == "-" {
 		listDeleteIfEmpty(filepath.Join(path))
 		parentDir := filepath.Dir(path)
 		c.Writer.Header().Add("X-IC-Refresh", "/list/"+encodeListId(parentDir))
-	} else if strings.HasPrefix(name, "/") {
+	} else if action == "dir" {
 		// create directory
 		name = strings.TrimSpace(name)
 		err = os.Mkdir(filepath.Join(path, normalizeFileName(name)), os.ModePerm)
 		if err != nil {
 			log.Fatal(err)
 		}
+    } else if action == "rename" {
+        parentDir := filepath.Dir(path)
+        os.Rename(path, filepath.Join(parentDir, normalizeFileName(name)))
+   		c.Writer.Header().Add("X-IC-Refresh", "/list/"+encodeListId(parentDir))
+    } else if action == "delete" {
+        parentDir := filepath.Dir(path)
+        os.RemoveAll(path)
+        c.Writer.Header().Add("X-IC-Refresh", "/list/"+encodeListId(parentDir))
 	} else {
 		// create file
 		_, err = os.Create(filepath.Join(path, normalizeFileName(name)+".txt"))
@@ -877,7 +884,7 @@ func listDeleteIfEmpty(dir string) {
 		log.Fatal(err)
 	}
 	if isEmpty && !isRoot(dir, todoPath) {
-		err = os.Remove(dir)
+		err = os.RemoveAll(dir)
 		if err != nil {
 			log.Fatal(err)
 		}
