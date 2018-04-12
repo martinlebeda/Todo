@@ -447,12 +447,11 @@ func renderSimpleList(base , style, listId, clientId string) string {
 }
 
 func renderFullList(base , style, listId, clientId string) string {
-    // TODO Lebeda - přidat buttons, click call ic-get-from="/list/` + listId + `/simple"
-	body := `<a class="nolink">
+	body := `<a class="nolink" id="head` + clientId + `">
                 <span style="` + style + `" 
                     ic-get-from="/list/` + listId + `/simple"
                     ic-replace-target="true"
-                    ic-target="#` + clientId + `" >
+                    ic-target="#head` + clientId + `" >
                 ` + base + `</span>
                 <div>
                   <form ic-post-to="/list/` + listId + `/frm" ic-include='{"cltgt": "` + clientId + `"}'>
