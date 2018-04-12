@@ -22,7 +22,7 @@ test: resources
 # copy release binary to ~/bin directory
 install: build test 
   # README.md
-  wget -O - 'http://127.0.0.1:39095/quit'
+  wget -O - 'http://127.0.0.1:39095/quit' || echo ok
   sleep 5s
   cp -v TodoServe ~/bin/
   ~/bin/TodoServe -editor gvim -notepath /home/martin/vimwiki/ukoly &
